@@ -1,0 +1,164 @@
+{
+  // ==========================================================================
+  // Berries EMR — VS Code Remote SSH Settings
+  // Optimized for 20-50ms latency remote development
+  //
+  // Merge into your local ~/.config/Code/User/settings.json (macOS) or
+  // %APPDATA%\Code\User\settings.json (Windows).
+  // These settings apply when connected to the remote dev server.
+  // ==========================================================================
+
+  // ---------------------------------------------------------------------------
+  // 1. Remote SSH transport
+  // ---------------------------------------------------------------------------
+  "remote.SSH.useLocalServer": true,
+  "remote.SSH.connectTimeout": 30,
+  "remote.SSH.localServerDownload": "auto",
+  "remote.SSH.showLoginTerminal": false,
+  "remote.SSH.enableDynamicForwarding": false,
+
+  // ---------------------------------------------------------------------------
+  // 2. File watcher exclusions — reduce inotify pressure on remote FS
+  // ---------------------------------------------------------------------------
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/dist/**": true,
+    "**/.next/**": true,
+    "**/coverage/**": true,
+    "**/.turbo/**": true,
+    "**/vendor/**": true,
+    "**/__pycache__/**": true,
+    "**/.prisma/**": true,
+    "**/tmp/**": true,
+    "**/.cache/**": true
+  },
+
+  // ---------------------------------------------------------------------------
+  // 3. Search exclusions — mirror watcher exclusions
+  // ---------------------------------------------------------------------------
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.git/objects": true,
+    "**/dist": true,
+    "**/.next": true,
+    "**/coverage": true,
+    "**/.turbo": true,
+    "**/vendor": true,
+    "**/__pycache__": true,
+    "**/.prisma": true,
+    "**/tmp": true,
+    "**/.cache": true,
+    "**/pnpm-lock.yaml": true,
+    "**/go.sum": true
+  },
+  "search.followSymlinks": false,
+
+  // ---------------------------------------------------------------------------
+  // 4. Terminal — reduce buffer to save memory on remote
+  // ---------------------------------------------------------------------------
+  "terminal.integrated.scrollback": 5000,
+  "terminal.integrated.gpuAcceleration": "off",
+
+  // ---------------------------------------------------------------------------
+  // 5. Auto-save — batch writes with 2s delay (reduces remote FS round-trips)
+  // ---------------------------------------------------------------------------
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 2000,
+
+  // ---------------------------------------------------------------------------
+  // 6. Git — disable polling to avoid constant remote FS reads
+  // ---------------------------------------------------------------------------
+  "git.autoRefresh": false,
+  "git.autoRepositoryDetection": "openEditors",
+  "git.decorations.enabled": true,
+  "git.enableStatusBarSync": false,
+
+  // ---------------------------------------------------------------------------
+  // 7. Editor — reduce keystroke-triggered operations for latency
+  // ---------------------------------------------------------------------------
+  "editor.quickSuggestions": {
+    "other": "on",
+    "comments": "off",
+    "strings": "off"
+  },
+  "editor.quickSuggestionsDelay": 200,
+  "editor.suggestOnTriggerCharacters": true,
+  "editor.acceptSuggestionOnCommitCharacter": false,
+  "editor.parameterHints.enabled": true,
+  "editor.parameterHints.cycle": false,
+  "editor.hover.delay": 400,
+  "editor.cursorBlinking": "solid",
+  "editor.cursorSmoothCaretAnimation": "off",
+  "editor.smoothScrolling": false,
+  "editor.minimap.enabled": false,
+  "editor.renderWhitespace": "selection",
+  "editor.occurrencesHighlight": "off",
+  "editor.matchBrackets": "near",
+  "editor.links": false,
+  "editor.codeLens": true,
+  "editor.formatOnSave": true,
+  "editor.bracketPairColorization.enabled": true,
+
+  // ---------------------------------------------------------------------------
+  // 8. Workbench — reduce visual overhead
+  // ---------------------------------------------------------------------------
+  "workbench.list.smoothScrolling": false,
+  "workbench.tree.renderIndentGuides": "onHover",
+  "workbench.editor.enablePreview": true,
+
+  // ---------------------------------------------------------------------------
+  // 9. Telemetry — disable over remote connection
+  // ---------------------------------------------------------------------------
+  "telemetry.telemetryLevel": "off",
+  "redhat.telemetry.enabled": false,
+
+  // ---------------------------------------------------------------------------
+  // 10. TypeScript — large monorepo settings
+  // ---------------------------------------------------------------------------
+  "typescript.tsserver.maxTsServerMemory": 8192,
+  "typescript.tsserver.watchOptions": {
+    "watchFile": "useFsEventsOnParentDirectory",
+    "watchDirectory": "useFsEvents"
+  },
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "typescript.suggest.autoImports": true,
+  "typescript.disableAutomaticTypeAcquisition": true,
+  "javascript.suggest.autoImports": true,
+
+  // ---------------------------------------------------------------------------
+  // 11. Go — match devcontainer settings
+  // ---------------------------------------------------------------------------
+  "go.toolsManagement.checkForUpdates": "local",
+  "go.useLanguageServer": true,
+  "go.lintTool": "golangci-lint",
+  "go.lintFlags": ["--fast", "--timeout", "5m"],
+  "go.testFlags": ["--timeout", "10m"],
+  "go.testEnvVars": {
+    "NO_COLOR": "true",
+    "GOARCH": "amd64",
+    "GOOS": "linux"
+  },
+  "go.buildTags": "unit,integration,e2e",
+  "go.testTags": "unit,integration,e2e",
+  "gopls": {
+    "formatting.gofumpt": true
+  },
+
+  // ---------------------------------------------------------------------------
+  // 12. Extension-specific — reduce background work
+  // ---------------------------------------------------------------------------
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "npm.autoDetect": "off",
+  "docker.showStartPage": false,
+
+  // ---------------------------------------------------------------------------
+  // 13. Files — match devcontainer conventions
+  // ---------------------------------------------------------------------------
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true
+}
