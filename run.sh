@@ -243,6 +243,7 @@ full_setup() {
   step "Full Setup"
   echo ""
   info "This will set up everything from scratch:"
+  echo -e "    ${DIM}0. Install Ubuntu on rescue system (if needed)${RESET}"
   echo -e "    ${DIM}1. Setup MacBook prerequisites${RESET}"
   echo -e "    ${DIM}2. Bootstrap the remote server${RESET}"
   echo -e "    ${DIM}3. Sync dotfiles & credentials${RESET}"
@@ -259,6 +260,20 @@ full_setup() {
   # Source .env for SERVER_IP
   # shellcheck source=/dev/null
   source "$ENV_FILE"
+
+  # ── Step 0: Install OS (if in rescue mode) ──
+  step "Step 0/6 — Install OS (if needed)"
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  local os_id
+  os_id=$(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@${SERVER_IP}" \
+    "grep '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2" 2>/dev/null || echo "unknown")
+  if [ "$os_id" != "ubuntu" ]; then
+    warn "Server is in rescue mode (not Ubuntu). Installing OS first..."
+    run_script "install-os.sh" "Install Ubuntu 24.04"
+  else
+    success "Server already running Ubuntu — skipping OS install"
+  fi
 
   # ── Step 1: MacBook setup ──
   step "Step 1/6 — MacBook Setup"
@@ -322,12 +337,9 @@ full_setup() {
 
   # ── Step 4: GitHub access ──
   step "Step 4/6 — GitHub Access"
+  info "Creates a server-specific SSH key for GitHub (recommended, avoids 1Password/agent issues)"
   if [ -f "${SCRIPT_DIR}/scripts/setup-github.sh" ]; then
-    if confirm "Set up a server-specific GitHub SSH key?"; then
-      run_script "setup-github.sh" "GitHub SSH key setup"
-    else
-      info "Skipping — you can use SSH agent forwarding instead, or run this later"
-    fi
+    run_script "setup-github.sh" "GitHub SSH key setup"
   else
     warn "scripts/setup-github.sh not found — skipping"
   fi
@@ -376,6 +388,7 @@ show_menu() {
   echo -e "    ${CYAN}8)${RESET}  Teardown"
   echo ""
   echo -e "    ${CYAN}9)${RESET}  Edit .env"
+  echo -e "    ${CYAN}i)${RESET}  Install OS ${DIM}(rescue → Ubuntu 24.04)${RESET}"
   echo -e "    ${CYAN}r)${RESET}  Recreate .env from scratch"
   echo -e "    ${CYAN}0)${RESET}  Exit"
   echo ""
@@ -435,6 +448,10 @@ show_menu() {
       ;;
     9)
       ${EDITOR:-vim} "$ENV_FILE"
+      ;;
+    i|I)
+      step "Install OS"
+      run_script "install-os.sh" "Install Ubuntu 24.04 on rescue system"
       ;;
     r|R)
       setup_env

@@ -314,7 +314,34 @@ run_rsync() {
     SYNCED+=("${label} (dry-run)")
     return 0
   fi
-  if rsync "$@" 2>/tmp/sync-dotfiles-rsync-err; then
+  # macOS bundled rsync (2.x) does not support --chmod; strip it and fix
+  # permissions via a post-sync SSH command instead.
+  local args=() chmod_spec="" remote_path=""
+  for arg in "$@"; do
+    if [[ "$arg" == --chmod=* ]]; then
+      chmod_spec="${arg#--chmod=}"
+    else
+      args+=("$arg")
+      # Track the last argument as the remote path (rsync convention: last arg is dest)
+      remote_path="$arg"
+    fi
+  done
+
+  if rsync "${args[@]}" 2>/tmp/sync-dotfiles-rsync-err; then
+    # Apply permissions via SSH if --chmod was requested
+    if [ -n "$chmod_spec" ] && [ -n "$remote_path" ]; then
+      local remote_host="${remote_path%%:*}"
+      local remote_dir="${remote_path#*:}"
+      # Parse D### and F### from chmod spec (e.g. D700,F600)
+      local dir_mode file_mode
+      dir_mode=$(echo "$chmod_spec" | grep -oE 'D[0-9]+' | tr -d 'D')
+      file_mode=$(echo "$chmod_spec" | grep -oE 'F[0-9]+' | tr -d 'F')
+      # shellcheck disable=SC2086
+      ssh $SSH_OPTS "$remote_host" "
+        [ -n '${dir_mode}' ] && find ${remote_dir} -type d -exec chmod ${dir_mode} {} + 2>/dev/null
+        [ -n '${file_mode}' ] && find ${remote_dir} -type f -exec chmod ${file_mode} {} + 2>/dev/null
+      " || true
+    fi
     SYNCED+=("$label")
   else
     local rc=$?

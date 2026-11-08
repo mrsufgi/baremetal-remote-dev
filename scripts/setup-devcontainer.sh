@@ -128,6 +128,35 @@ echo "  devcontainer CLI: installed ($(devcontainer --version 2>/dev/null || ech
 INSTALL_CLI
 
 # =============================================================================
+# Phase 1.5: Ensure GitHub SSH access works
+# =============================================================================
+echo "[setup] ==> Verifying GitHub SSH access..."
+
+# Ensure github.com is in known_hosts
+ssh -A -o LogLevel=ERROR "${SERVER}" \
+  'ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null; sort -u -o ~/.ssh/known_hosts ~/.ssh/known_hosts'
+
+# Test GitHub auth — try agent forwarding first, then server-local key
+GH_AUTH_OK=false
+GH_USER=$(ssh -A -o LogLevel=ERROR "${SERVER}" "ssh -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 || true")
+if echo "$GH_USER" | grep -q "successfully authenticated"; then
+  echo "  GitHub SSH: OK ($(echo "$GH_USER" | grep -oP 'Hi \K[^!]+'))"
+  GH_AUTH_OK=true
+fi
+
+if [ "$GH_AUTH_OK" = false ]; then
+  echo "  WARNING: GitHub SSH auth failed via agent forwarding."
+  echo "           This is common with 1Password SSH agent or when ssh-add hasn't been run."
+  echo ""
+  echo "  The server needs a GitHub SSH key. Options:"
+  echo "    1. Run: ./scripts/setup-github.sh   (generates a server-specific key)"
+  echo "    2. Copy your key: scp ~/.ssh/your_github_key ${SERVER}:~/.ssh/"
+  echo "    3. Run: ssh-add ~/.ssh/id_ed25519   (add key to local agent, then retry)"
+  echo ""
+  echo "  Attempting to continue — the clone may fail."
+fi
+
+# =============================================================================
 # Phase 2: Clone or update repo, handle branch
 # =============================================================================
 echo "[setup] ==> Setting up repository..."

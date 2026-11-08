@@ -14,9 +14,12 @@ No Docker, Node.js, or other tooling needed locally. Everything runs on the remo
 
 ## One-Command Setup (After Configuration)
 
-Once you have a server IP and Tailscale auth key, the full setup is four commands:
+Once you have a server IP and Tailscale auth key, the full setup is five commands:
 
 ```bash
+# 0. Install Ubuntu on rescue system (only for fresh Hetzner auction servers)
+./scripts/install-os.sh
+
 # 1. Bootstrap the server (runs as root, ~5 min)
 ssh root@SERVER_IP 'TAILSCALE_AUTHKEY=tskey-auth-xxx OLLAMA_MODELS="gemma3:9b snowflake-arctic-embed2" bash -s' < bootstrap.sh
 
@@ -26,7 +29,10 @@ ssh root@SERVER_IP 'TAILSCALE_AUTHKEY=tskey-auth-xxx OLLAMA_MODELS="gemma3:9b sn
 # 3. Set up SSH config on your MacBook (~1 sec)
 ./scripts/connect.sh
 
-# 4. Clone repo and start devcontainer (~10-15 min first time)
+# 4. Set up GitHub SSH access on the server (~30 sec)
+./scripts/setup-github.sh
+
+# 5. Clone repo and start devcontainer (~10-15 min first time)
 ./scripts/setup-devcontainer.sh
 ```
 
@@ -54,11 +60,14 @@ Go to [hetzner.com/sb](https://www.hetzner.com/sb/) (Server Auction / Server-Bid
 **Ordering process:**
 
 1. Click a server that meets specs, then "Order"
-2. Choose **Ubuntu 24.04** as the operating system
-3. Under SSH Keys, **add your public key** (`~/.ssh/id_ed25519.pub`)
-4. No RAID needed — the bootstrap handles disk layout
-5. Complete checkout (no setup fee on auction servers)
-6. Wait for provisioning email (~15-30 min) with your server IP
+2. Under SSH Keys, **add your public key** (`~/.ssh/id_ed25519.pub`)
+3. No RAID needed — the bootstrap handles disk layout
+4. Complete checkout (no setup fee on auction servers)
+5. Wait for provisioning email (~15-30 min) with your server IP
+
+> **Note:** Auction servers arrive in Hetzner's **rescue system** (a minimal Debian), not Ubuntu.
+> Run `./scripts/install-os.sh` first to install Ubuntu 24.04 with RAID1 + LVM before bootstrapping.
+> The install script handles disk partitioning, OS installation, and reboot automatically.
 
 ### Step 2: Get a Tailscale Auth Key
 
@@ -98,6 +107,24 @@ Optional fields:
 | `DATA_DISK` | _(empty)_ | Second NVMe device path (e.g., `/dev/nvme1n1`) |
 | `OLLAMA_MODELS` | `gemma3:9b snowflake-arctic-embed2` | Models to pre-pull |
 | `STRIPE_SECRET_KEY` | _(empty)_ | For local webhook forwarding |
+
+### Step 3.5: Install Ubuntu (Auction Servers Only)
+
+Hetzner auction servers arrive in a **rescue system** (minimal Debian), not Ubuntu. You must install the OS first:
+
+```bash
+./scripts/install-os.sh
+```
+
+This will:
+1. Detect that the server is in rescue mode
+2. Install Ubuntu 24.04 LTS with software RAID1 across both NVMe drives
+3. Create LVM volumes: 150GB root (xfs), 8GB swap, remaining space for `/data` (xfs). Root holds OS + dotfiles; workspace and Docker live on `/data`. Overridable via `ROOT_LV_SIZE` / `SWAP_LV_SIZE` / `RAID_LEVEL` in `.env`
+4. Reboot into Ubuntu and wait for the server to come back
+
+The script handles host key changes automatically (new OS = new SSH keys).
+
+> **Skip this step** if you selected Ubuntu 24.04 during ordering and the server already boots into Ubuntu.
 
 ### Step 4: Bootstrap the Server
 
@@ -162,7 +189,25 @@ This appends an entry to `~/.ssh/config` with:
 - Compression enabled
 - A `-direct` fallback alias using the public IP
 
-### Step 7: Start the Devcontainer
+### Step 7: Set Up GitHub SSH Access
+
+```bash
+./scripts/setup-github.sh
+```
+
+This generates a **server-specific SSH key** for GitHub access and is the recommended approach. It:
+1. Creates `~/.ssh/id_ed25519_github` on the server
+2. Configures `~/.ssh/config` to use it for `github.com`
+3. Adds the key to your GitHub account (via `gh` CLI if available, otherwise prints manual instructions)
+4. Tests the connection
+
+> **Why not just use SSH agent forwarding?** Agent forwarding (`ssh -A`) works if your MacBook's
+> SSH agent has your GitHub key loaded. However, **if you use 1Password as your SSH agent**
+> (`IdentityAgent` in `~/.ssh/config`), the forwarded agent will authenticate as whatever GitHub
+> account your 1Password key is linked to — which may not be the right account. A server-specific
+> key avoids this entirely.
+
+### Step 8: Start the Devcontainer
 
 ```bash
 ./scripts/setup-devcontainer.sh
@@ -170,13 +215,16 @@ This appends an entry to `~/.ssh/config` with:
 
 This SSHes into the server and:
 
-1. Installs Node.js and `@devcontainers/cli` (if not present)
-2. Clones your repo to `~/workspace`
-3. Runs `devcontainer up` (builds all Docker images)
+1. Verifies Docker is running and prerequisites are met
+2. Installs `@devcontainers/cli` (if not present)
+3. Verifies GitHub SSH access (warns if agent forwarding doesn't work)
+4. Clones your repo to `~/workspace`
+5. Pre-pulls Docker images in parallel
+6. Runs `devcontainer up` (builds all Docker images)
 
 First build takes ~10-15 minutes. Subsequent starts are under 30 seconds.
 
-### Step 8: Connect
+### Step 9: Connect
 
 ```bash
 # VS Code (recommended)
@@ -318,6 +366,33 @@ ollama rm gemma3:9b
 ```
 
 ## Troubleshooting
+
+### Server Is in Rescue Mode (Can't Bootstrap)
+
+**Symptom:** Bootstrap fails with errors like `fstrim.timer does not exist` or packages missing.
+
+**Cause:** Hetzner auction servers arrive in a rescue system (Debian), not Ubuntu. You need to install the OS first.
+
+**Fix:**
+
+```bash
+./scripts/install-os.sh
+```
+
+This installs Ubuntu 24.04 with RAID1 + LVM and reboots. Then re-run bootstrap.
+
+### GitHub Clone Fails ("Repository not found" or "Permission denied")
+
+**Symptom:** `setup-devcontainer.sh` fails at the clone step.
+
+**Common causes and fixes:**
+
+1. **Host key not in known_hosts:** `ssh dev@devbox 'ssh-keyscan github.com >> ~/.ssh/known_hosts'`
+2. **Wrong GitHub account (1Password users):** If you use 1Password as your SSH agent, agent forwarding authenticates as whatever account your 1Password key is linked to. Run `./scripts/setup-github.sh` to create a server-specific key instead.
+3. **SSH agent empty:** Run `ssh-add ~/.ssh/your_key` on your MacBook before retrying.
+4. **Repo URL wrong:** Check `REPO_URL` in `.env` — it must be the SSH URL (`git@github.com:org/repo.git`), and your GitHub account must have access.
+
+**Quick test:** `ssh dev@devbox 'ssh -T git@github.com'` should show your username.
 
 ### Can't SSH After Bootstrap
 
@@ -507,6 +582,7 @@ When you're done with the server:
 | Credential | Location | How It Gets There | Risk |
 |------------|----------|-------------------|------|
 | SSH private key | MacBook only | Never leaves your machine | Agent forwarding exposes it per-session |
+| GitHub SSH key | Server `~/.ssh/id_ed25519_github` | Generated by `setup-github.sh` | Medium — removed by teardown |
 | SSH public key | Server `~/.ssh/authorized_keys` | Copied by bootstrap from root | Low — public keys are public |
 | GPG private keys | Server `~/.gnupg/` | Exported/imported by `sync-dotfiles.sh` | Medium — removed by teardown |
 | GitHub CLI token | Server `~/.config/gh/hosts.yml` | Copied by `sync-dotfiles.sh` | Medium — removed by teardown |
@@ -522,17 +598,23 @@ When you're done with the server:
 - **Port 22**: only open on `tailscale0` after bootstrap (not on public interface)
 - **Unattended upgrades**: security patches auto-installed
 
-### SSH Agent Forwarding
+### SSH Agent Forwarding & 1Password
 
-Your SSH private key never touches the server. When you `ssh devbox`, agent forwarding lets the server use your local key for GitHub operations (`git push`, `gh` commands) without copying it. The forwarded key is only available during your active SSH session.
+By default, `connect.sh` enables SSH agent forwarding (`ForwardAgent yes`). When you `ssh devbox`, the server can use your MacBook's SSH key for GitHub operations without the key ever being stored remotely.
+
+**1Password users:** If you use 1Password as your SSH agent (`IdentityAgent` in `~/.ssh/config`), agent forwarding will authenticate as whatever GitHub account your 1Password SSH key is linked to. This may not be the account you want. **Run `./scripts/setup-github.sh`** to create a server-specific key instead — this is the recommended approach for 1Password users.
+
+**If `setup-github.sh` was used:** The server has its own `~/.ssh/id_ed25519_github` key for GitHub. Agent forwarding is still enabled (useful for other SSH hosts) but is not needed for git operations.
 
 ## Scripts Reference
 
 | Script | Run From | Purpose |
 |--------|----------|---------|
+| `scripts/install-os.sh` | MacBook | Installs Ubuntu 24.04 on Hetzner rescue system (RAID1 + LVM) |
 | `bootstrap.sh` | MacBook (piped to server) | Full server provisioning: Docker, Tailscale, Ollama, SSH hardening, firewall |
 | `scripts/sync-dotfiles.sh` | MacBook | Syncs git/GPG/GitHub/Claude config to server |
 | `scripts/connect.sh` | MacBook | Generates `~/.ssh/config` entry with multiplexing and keepalive |
+| `scripts/setup-github.sh` | MacBook | Creates server-specific GitHub SSH key (avoids agent forwarding issues) |
 | `scripts/setup-devcontainer.sh` | MacBook | Clones repo and runs `devcontainer up` on the server |
 | `scripts/status.sh` | MacBook | Health check: CPU, RAM, disk, Docker, Ollama, temps |
 | `scripts/teardown.sh` | MacBook | Credential cleanup, Tailscale disconnect, cancellation checklist |
